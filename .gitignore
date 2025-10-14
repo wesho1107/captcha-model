@@ -1,0 +1,7 @@
+# Data and image files for the project
+data/
+images/
+
+# Environment variables
+.env
+.venv/
