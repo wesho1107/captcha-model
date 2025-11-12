@@ -1,6 +1,9 @@
-# PyTorch and torchvision
-torch>=1.9.0
-torchvision>=0.10.0
+# PyTorch and torchvision with CUDA support
+# Install using: pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
+# Or for CUDA 12.4: pip install torch torchvision --index-url https://download.pytorch.org/whl/cu124
+# Check available versions at: https://pytorch.org/get-started/locally/
+torch>=2.0.0
+torchvision>=0.15.0
 
 # Image processing
 opencv-python>=4.5.0
