@@ -11,6 +11,7 @@ from typing import List, Dict, Tuple, Optional, Union
 import argparse
 import random
 import json
+import shutil
 
 
 class DBSCANSegmentor:
@@ -535,6 +536,176 @@ class DBSCANSegmentor:
         print(f"Saved training data to {output_path}")
         print(f"  - {len(training_data)} images")
 
+    def split_and_save_training_data(self,
+                                     training_data: List[Dict],
+                                     original_data_path: str,
+                                     output_dir: str,
+                                     train_ratio: float = 0.7,
+                                     charset: Optional[List[str]] = None,
+                                     seed: int = 42) -> None:
+        """
+        Split training data into train/test sets, copy images to respective folders,
+        and save COCO format JSON files for each split.
+        
+        Args:
+            training_data: Output from get_training_data() method
+            original_data_path: Path to directory containing original CAPTCHA images
+            output_dir: Path to directory where train/ and test/ folders will be created
+            train_ratio: Ratio of data to use for training (default: 0.7, so 70% train, 30% test)
+            charset: Optional charset to include in JSON metadata
+            seed: Random seed for reproducibility (default: 42)
+        """
+        if not self.char_to_idx:
+            if charset is not None:
+                self.charset = charset
+                self.char_to_idx = {c: i + 1 for i, c in enumerate(self.charset)}
+            else:
+                raise ValueError("Character to index mapping is not initialized. "
+                               "Either provide charset or call get_training_data first.")
+        
+        # Set random seed for reproducibility
+        random.seed(seed)
+        np.random.seed(seed)
+        
+        # Shuffle training data
+        shuffled_data = training_data.copy()
+        random.shuffle(shuffled_data)
+        
+        # Split into train and test
+        split_idx = int(len(shuffled_data) * train_ratio)
+        train_data = shuffled_data[:split_idx]
+        test_data = shuffled_data[split_idx:]
+        
+        print(f"Splitting {len(training_data)} images into:")
+        print(f"  - Train: {len(train_data)} images ({len(train_data)/len(training_data)*100:.1f}%)")
+        print(f"  - Test: {len(test_data)} images ({len(test_data)/len(training_data)*100:.1f}%)")
+        
+        # Create output directories
+        train_dir = os.path.join(output_dir, 'train')
+        test_dir = os.path.join(output_dir, 'test')
+        os.makedirs(train_dir, exist_ok=True)
+        os.makedirs(test_dir, exist_ok=True)
+        
+        # Helper function to find original image path
+        def find_image_path(image_id: str, search_path: str) -> Optional[str]:
+            """Find the full path to an image file by searching in search_path."""
+            for root, dirs, files in os.walk(search_path):
+                if image_id in files:
+                    return os.path.join(root, image_id)
+            return None
+        
+        # Helper function to save split data
+        def save_split(split_data: List[Dict], split_dir: str, split_name: str) -> None:
+            """Save images and COCO JSON for a split."""
+            images = []
+            annotations = []
+            categories = [
+                {
+                    'id': idx,
+                    'name': char
+                }
+                for char, idx in sorted(self.char_to_idx.items(), key=lambda kv: kv[1])
+            ]
+            
+            annotation_id = 1
+            image_id = 1
+            copied_count = 0
+            missing_count = 0
+            
+            for item in split_data:
+                filename = item['image_id']
+                width = item.get('width')
+                height = item.get('height')
+                if width is None or height is None:
+                    print(f"Warning: Skipping {filename} - missing width/height.")
+                    continue
+                
+                # Find and copy image
+                original_image_path = find_image_path(filename, original_data_path)
+                if original_image_path is None:
+                    print(f"Warning: Could not find image {filename} in {original_data_path}")
+                    missing_count += 1
+                    continue
+                
+                # Copy image to split directory
+                dest_image_path = os.path.join(split_dir, filename)
+                try:
+                    shutil.copy2(original_image_path, dest_image_path)
+                    copied_count += 1
+                except Exception as e:
+                    print(f"Warning: Failed to copy image {filename}: {e}")
+                    missing_count += 1
+                    continue
+                
+                # Add to images list
+                current_image_id = image_id
+                images.append({
+                    'id': current_image_id,
+                    'file_name': filename,
+                    'width': width,
+                    'height': height
+                })
+                image_id += 1
+                
+                # Add annotations
+                boxes = item['boxes']
+                labels = item['labels']
+                if len(boxes) != len(labels):
+                    print(f"Warning: Mismatched boxes/labels lengths for {filename}.")
+                    continue
+                
+                for box, label in zip(boxes, labels):
+                    if label == 0:
+                        continue  # skip background if present
+                    x1, y1, x2, y2 = box
+                    width_box = max(0, x2 - x1)
+                    height_box = max(0, y2 - y1)
+                    area = width_box * height_box
+                    annotations.append({
+                        'id': annotation_id,
+                        'image_id': current_image_id,
+                        'category_id': int(label),
+                        'bbox': [x1, y1, width_box, height_box],
+                        'area': area,
+                        'iscrowd': 0,
+                        'segmentation': []
+                    })
+                    annotation_id += 1
+            
+            # Create COCO JSON structure
+            json_data = {
+                'info': {
+                    'description': f'DBSCAN Segmentor Dataset - {split_name}',
+                    'version': '1.0',
+                    'num_images': len(images),
+                    'num_annotations': len(annotations)
+                },
+                'licenses': [],
+                'images': images,
+                'annotations': annotations,
+                'categories': categories
+            }
+            
+            json_data = self._convert_to_native_types(json_data)
+            
+            # Save JSON file
+            json_path = os.path.join(split_dir, 'annotations.json')
+            with open(json_path, 'w') as f:
+                json.dump(json_data, f, indent=2)
+            
+            print(f"Saved {split_name} split to {split_dir}")
+            print(f"  - Copied {copied_count} images")
+            print(f"  - Missing {missing_count} images")
+            print(f"  - {len(images)} images in JSON")
+            print(f"  - {len(annotations)} annotations")
+            print(f"  - JSON saved to {json_path}")
+        
+        # Save train and test splits
+        save_split(train_data, train_dir, 'train')
+        save_split(test_data, test_dir, 'test')
+        
+        print(f"\nSuccessfully split and saved training data to {output_dir}")
+
     def save_to_files(self, 
                      roi: np.ndarray, 
                      meta: List[Dict], 
@@ -590,12 +761,13 @@ class DBSCANSegmentor:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="DBSCAN Segmentor")
     parser.add_argument("data_path", type=str, help="Path to directory containing CAPTCHA images")
-    parser.add_argument("out_path", type=str, help="Path to directory to save segmented characters")
+    parser.add_argument("out_path", type=str, help="Path to output directory where train/ and test/ folders will be created")
     args = parser.parse_args()
     
     segmentor = DBSCANSegmentor()
 
     training_data = segmentor.get_training_data(args.data_path)
-    segmentor.save_training_data_to_json(training_data, args.out_path) 
-    # To run and get json of valid training data:
-    # python rcnn/dbscan_segmentor.py data/train output.json
+    # segmentor.save_training_data_to_json(training_data, args.out_path)  # Old: expects file path like 'output.json'
+    segmentor.split_and_save_training_data(training_data, args.data_path, args.out_path)
+    # To run and split data into train/test:
+    # python rcnn/dbscan_segmentor.py data/train output/split_data
