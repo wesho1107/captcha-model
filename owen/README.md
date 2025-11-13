@@ -1,0 +1,1 @@
+Attribution: This project utilizes the AlphaNum dataset, created by Louis Rädisch and sourced from Kaggle. The dataset is licensed under the Apache 2.0 License. The original copyright and licensing information is available at: https://www.kaggle.com/datasets/lopalp/alphanum
