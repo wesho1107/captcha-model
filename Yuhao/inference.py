@@ -289,7 +289,7 @@ def predict_partial(model, roi, metadata):
 
         with torch.no_grad():
             output = model(input_tensor)
-            conf, predicted = torch.max(output.data, 1)
+            conf, predicted = torch.max(torch.softmax(output, dim=1), 1)
             confidence = conf.item()
             predicted_char = chars[predicted.item()]
             predicted_partial += predicted_char
@@ -335,15 +335,6 @@ def dbscan_inference(model, img_path, eps=10, spatial_weight=1.0, color_weight=1
         colors, counts = np.unique(roi_rgb, axis=0, return_counts=True)
         # print(f"Unique colors: {len(colors)}")
 
-        if show_roi:
-            # draw the bounding box on the original image for visualization
-            vis_img = img.copy()
-            cv2.rectangle(vis_img, (x, y), (x + w, y + h), (0, 255, 0), 2)
-            cv2.imshow("ROI", vis_img)
-            cv2.imshow("ROI raw", roi)
-            cv2.waitKey(0)
-            cv2.destroyAllWindows()
-
         top_color_counts = sorted(zip(counts, colors), key=lambda x: x[0], reverse=True)
         usable_colors = []
         usable_counts = []
@@ -378,12 +369,11 @@ def dbscan_inference(model, img_path, eps=10, spatial_weight=1.0, color_weight=1
     for roi, metadata, bbox in rois_to_analyse:
         partial_string, confidence_results = predict_partial(model, roi, metadata)
         predicted_string += partial_string
-        if show_roi:
-            for i, res in enumerate(confidence_results):
-                x, y, w, h = bbox
-                cv2.rectangle(img, (x, y), (x + w, y + h), (0, 255, 0), 2)
-                cv2.putText(img, f"{res['char']}:{res['confidence']:.2f}", (x, y - 10),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 1)
+        for i, res in enumerate(confidence_results):
+            x, y, w, h = bbox
+            cv2.rectangle(img, (x, y), (x + w, y + h), (0, 255, 0), 2)
+            cv2.putText(img, f"{res['char']}:{res['confidence']:.2f}", (x, y - 10),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.3, (255, 0, 0), 1)
 
         
     # print(f"Predicted string: {predicted_string}")
