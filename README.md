@@ -55,7 +55,7 @@ Contains the main implementation:
 
 ## Contributions:
 - Tu Jia En: Data Cleaning, CNN, OCR-style with BiLSTM CTC
-- Guo Yuhao: Data Cleaning, Preprocessing, Segmentation (DBSCAN), CNN
+- Guo Yuhao: Data Cleaning, Preprocessing, Segmentation (DBSCAN), SqueezeNet, CNN
 - Ong Sheng Jin Owen: Data Cleaning, GAN
 - Ho Jia Cheng: Data Cleaning, Segmentation, FasterRCNN, Inference Visualisation
-- Yek Khoon Sun: Data Cleaning, Segmentation (K-clustering)
+- Yek Khoon Sun: Data Cleaning, Preprocessing, Segmentation (K-clustering)
